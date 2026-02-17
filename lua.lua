@@ -5,7 +5,11 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local HttpService = game:GetService("HttpService")
 local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
+
+local PlayerGui = player and player:WaitForChild("PlayerGui")
+if not PlayerGui then
+    return
+end
 
 local ConfigName = "rbxlxcfgsave.json"
 local defaultConfig = {
@@ -29,28 +33,36 @@ local function SaveConfig()
         XrayEnabled = Settings.XrayEnabled,
         AutoKickEnabled = Settings.AutoKickEnabled
     }
-   
-    local success, json = pcall(function() return HttpService:JSONEncode(data) end)
-    if success then
-        if writefile then
-            writefile(ConfigName, json)
-        end
+    
+    local success, json = pcall(function() 
+        return HttpService:JSONEncode(data) 
+    end)
+    
+    if success and writefile then
+        pcall(function() 
+            writefile(ConfigName, json) 
+        end)
     end
 end
 
 local function LoadConfig()
     if not isfile or not readfile then return end
-    if isfile(ConfigName) then
-        local content = readfile(ConfigName)
-        local success, result = pcall(function() return HttpService:JSONDecode(content) end)
-       
-        if success and result then
-            if result.CameraBind then Settings.CameraBind = result.CameraBind end
-            if result.AutoFlashEnabled ~= nil then Settings.AutoFlashEnabled = result.AutoFlashEnabled end
-            if result.XrayEnabled ~= nil then Settings.XrayEnabled = result.XrayEnabled end
-            if result.AutoKickEnabled ~= nil then Settings.AutoKickEnabled = result.AutoKickEnabled end
+    
+    pcall(function()
+        if isfile(ConfigName) then
+            local content = readfile(ConfigName)
+            local success, result = pcall(function() 
+                return HttpService:JSONDecode(content) 
+            end)
+            
+            if success and result then
+                if result.CameraBind then Settings.CameraBind = result.CameraBind end
+                if result.AutoFlashEnabled ~= nil then Settings.AutoFlashEnabled = result.AutoFlashEnabled end
+                if result.XrayEnabled ~= nil then Settings.XrayEnabled = result.XrayEnabled end
+                if result.AutoKickEnabled ~= nil then Settings.AutoKickEnabled = result.AutoKickEnabled end
+            end
         end
-    end
+    end)
 end
 
 LoadConfig()
@@ -58,7 +70,7 @@ LoadConfig()
 local gui = Instance.new("ScreenGui")
 gui.Name = "RbxlxHub"
 gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
+gui.Parent = PlayerGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
@@ -157,25 +169,36 @@ local function setupCameraButton(btn, bindBtn)
     local camera = workspace.CurrentCamera
     
     local function activateCamera()
-        local pos = camera.CFrame.Position
-        local lookVector = camera.CFrame.LookVector
-        local horizontalDir = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
-        
-        if horizontalDir.Magnitude > 0 then
-            local lookAtPoint = pos + horizontalDir * 100 + Vector3.new(0, 80, 0)
-            local targetCFrame = CFrame.lookAt(pos, lookAtPoint)
-            camera.CFrame = targetCFrame
+        if not camera then 
+            camera = workspace.CurrentCamera
+            if not camera then return end
         end
         
-        btn.BackgroundColor3 = Color3.fromRGB(70, 80, 120)
-        task.wait(0.1)
-        btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+        pcall(function()
+            local pos = camera.CFrame.Position
+            local lookVector = camera.CFrame.LookVector
+            local horizontalDir = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
+            
+            if horizontalDir.Magnitude > 0 then
+                local lookAtPoint = pos + horizontalDir * 100 + Vector3.new(0, 80, 0)
+                local targetCFrame = CFrame.lookAt(pos, lookAtPoint)
+                camera.CFrame = targetCFrame
+            end
+            
+            if btn then
+                btn.BackgroundColor3 = Color3.fromRGB(70, 80, 120)
+                task.wait(0.1)
+                btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+            end
+        end)
     end
     
-    btn.MouseButton1Click:Connect(activateCamera)
+    if btn then
+        btn.MouseButton1Click:Connect(activateCamera)
+    end
     
     if bindBtn then
-        bindBtn.Text = cameraBind
+        bindBtn.Text = cameraBind or "B"
         
         bindBtn.MouseButton1Click:Connect(function()
             bindBtn.Text = "..."
@@ -184,14 +207,17 @@ local function setupCameraButton(btn, bindBtn)
             local connection
             connection = UserInputService.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.Keyboard then
-                    cameraBind = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
-                    bindBtn.Text = cameraBind
+                    local keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+                    cameraBind = keyName
+                    bindBtn.Text = keyName
                     bindBtn.BackgroundColor3 = Color3.fromRGB(65, 68, 80)
                     
-                    Settings.CameraBind = cameraBind
+                    Settings.CameraBind = keyName
                     SaveConfig()
                     
-                    connection:Disconnect()
+                    if connection then
+                        connection:Disconnect()
+                    end
                 end
             end)
         end)
@@ -210,97 +236,103 @@ local function setupCameraButton(btn, bindBtn)
 end
 
 local function setupNoSoundCloneButton(btn)
+    if not btn then return end
+    
     btn.MouseButton1Click:Connect(function()
-        local function useQuantumCloner()
-            pcall(function()
-                local char = player.Character
-                if not char then return end
-                
-                local humanoid = char:FindFirstChild("Humanoid")
-                if not humanoid then return end
-                
-                local backpack = player:FindFirstChild("Backpack")
-                if not backpack then return end
-                
-                local cloner = backpack:FindFirstChild("Quantum Cloner") or 
-                              backpack:FindFirstChild("QuantumCloner") or
-                              backpack:FindFirstChild("quantum cloner") or
-                              backpack:FindFirstChild("quantumcloner")
-                
-                if not cloner then
-                    for _, item in pairs(backpack:GetChildren()) do
-                        if item:IsA("Tool") then
-                            local name = string.lower(item.Name)
-                            if name:find("quantum") or name:find("cloner") or name:find("клон") then
-                                cloner = item
-                                break
-                            end
+        pcall(function()
+            local char = player.Character
+            if not char then return end
+            
+            local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+            if not humanoid then return end
+            
+            local backpack = player:FindFirstChild("Backpack")
+            if not backpack then return end
+            
+            local cloner = backpack:FindFirstChild("Quantum Cloner") or 
+                          backpack:FindFirstChild("QuantumCloner") or
+                          backpack:FindFirstChild("quantum cloner") or
+                          backpack:FindFirstChild("quantumcloner")
+            
+            if not cloner then
+                for _, item in pairs(backpack:GetChildren()) do
+                    if item:IsA("Tool") then
+                        local name = string.lower(item.Name)
+                        if name:find("quantum") or name:find("cloner") or name:find("клон") then
+                            cloner = item
+                            break
                         end
                     end
                 end
+            end
+            
+            if cloner then
+                humanoid:UnequipTools()
+                task.wait(0.005)
+                humanoid:EquipTool(cloner)
+                task.wait(0.01)
+                cloner:Activate()
                 
-                if cloner then
-                    humanoid:UnequipTools()
-                    task.wait(0.005)
-                    humanoid:EquipTool(cloner)
-                    task.wait(0.01)
-                    cloner:Activate()
-                    
-                    btn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-                    task.wait(0.2)
-                    btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
-                    
-                    task.wait(0.0001)
-                    game:Shutdown()
-                    return true
-                else
-                    btn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-                    task.wait(0.2)
-                    btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
-                    return false
-                end
-            end)
-        end
-        
-        useQuantumCloner()
+                btn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                task.wait(0.2)
+                btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+                
+                task.wait(0.0001)
+                game:Shutdown()
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+                task.wait(0.2)
+                btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+            end
+        end)
     end)
 end
 
 local function setupAutoUseFlashToggle(toggleFrame)
+    if not toggleFrame then return end
+    
     local toggleBtn = toggleFrame:FindFirstChild("Toggle")
-    local circle = toggleBtn:FindFirstChild("Circle")
+    local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
+    if not toggleBtn or not circle then return end
+    
     local state = Settings.AutoFlashEnabled
     local flashConnection = nil
     local holdConnection = nil
     
     local function useFlashTeleport()
-        if player:GetAttribute("Stealing") then return end
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-        local tool = player.Backpack:FindFirstChild("Flash Teleport") or char:FindFirstChild("Flash Teleport")
-        if not tool then return end
-        
-        hum:EquipTool(tool)
-        local t = os.clock()
-        while tool.Parent ~= char and os.clock() - t < 1.5 do
-            RunService.RenderStepped:Wait()
-        end
-        if tool.Parent ~= char then return end
-        
-        for i = 1, 15 do
-            RunService.RenderStepped:Wait()
-        end
-        
         pcall(function()
+            if player:GetAttribute("Stealing") then return end
+            local char = player.Character
+            if not char then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+            local tool = player.Backpack:FindFirstChild("Flash Teleport") or char:FindFirstChild("Flash Teleport")
+            if not tool then return end
+            
+            hum:EquipTool(tool)
+            local t = os.clock()
+            while tool.Parent ~= char and os.clock() - t < 1.5 do
+                RunService.RenderStepped:Wait()
+            end
+            if tool.Parent ~= char then return end
+            
+            for i = 1, 15 do
+                RunService.RenderStepped:Wait()
+            end
+            
             tool:Activate()
         end)
     end
     
-    if state then
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
-        circle.Position = UDim2.new(1, -18, 0.5, -8)
+    local function setupConnections()
+        if flashConnection then
+            flashConnection:Disconnect()
+            flashConnection = nil
+        end
+        if holdConnection then
+            holdConnection:Disconnect()
+            holdConnection = nil
+        end
         
         local startTime = 0
         local duration = 1
@@ -312,7 +344,7 @@ local function setupAutoUseFlashToggle(toggleFrame)
             holding = true
             used = false
             startTime = os.clock()
-            duration = prompt.HoldDuration or 1
+            duration = prompt and prompt.HoldDuration or 1
             
             task.spawn(function()
                 while holding do
@@ -334,43 +366,22 @@ local function setupAutoUseFlashToggle(toggleFrame)
         end)
     end
     
+    if state then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+        circle.Position = UDim2.new(1, -18, 0.5, -8)
+        setupConnections()
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+        circle.Position = UDim2.new(0, 2, 0.5, -8)
+    end
+    
     toggleBtn.MouseButton1Click:Connect(function()
         state = not state
+        
         if state then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
             circle.Position = UDim2.new(1, -18, 0.5, -8)
-            
-            local startTime = 0
-            local duration = 1
-            local used = false
-            local holding = false
-            
-            flashConnection = ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt, plr)
-                if plr ~= player then return end
-                holding = true
-                used = false
-                startTime = os.clock()
-                duration = prompt.HoldDuration or 1
-                
-                task.spawn(function()
-                    while holding do
-                        if player:GetAttribute("Stealing") then break end
-                        
-                        local progress = (os.clock() - startTime) / duration
-                        if progress >= 0.91 and not used then
-                            used = true
-                            useFlashTeleport()
-                        end
-                        RunService.Heartbeat:Wait()
-                    end
-                end)
-            end)
-            
-            holdConnection = ProximityPromptService.PromptButtonHoldEnded:Connect(function(_, plr)
-                if plr ~= player then return end
-                holding = false
-            end)
-            
+            setupConnections()
         else
             toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
             circle.Position = UDim2.new(0, 2, 0.5, -8)
@@ -483,7 +494,7 @@ local function getAllParts()
                 end
             end
             
-            collectParts(plots)
+            pcall(function() collectParts(plots) end)
         end
         
         partsCache = newParts
@@ -498,7 +509,7 @@ local function enableXray()
     
     if xrayToggleFrame then
         local toggleBtn = xrayToggleFrame:FindFirstChild("Toggle")
-        local circle = toggleBtn:FindFirstChild("Circle")
+        local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
         if toggleBtn and circle then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
             circle.Position = UDim2.new(1, -18, 0.5, -8)
@@ -509,15 +520,17 @@ end
 local function disableXray()
     xrayEnabled = false
     
-    for _, part in ipairs(partsCache) do
-        if part and part.Parent then
-            part.Transparency = 0
+    pcall(function()
+        for _, part in ipairs(partsCache) do
+            if part and part.Parent then
+                part.Transparency = 0
+            end
         end
-    end
+    end)
     
     if xrayToggleFrame then
         local toggleBtn = xrayToggleFrame:FindFirstChild("Toggle")
-        local circle = toggleBtn:FindFirstChild("Circle")
+        local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
         if toggleBtn and circle then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
             circle.Position = UDim2.new(0, 2, 0.5, -8)
@@ -526,9 +539,13 @@ local function disableXray()
 end
 
 local function setupXrayToggle(toggleFrame)
+    if not toggleFrame then return end
+    
     xrayToggleFrame = toggleFrame
     local toggleBtn = toggleFrame:FindFirstChild("Toggle")
-    local circle = toggleBtn:FindFirstChild("Circle")
+    local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
+    if not toggleBtn or not circle then return end
+    
     local state = xrayEnabled
     
     if state then
@@ -549,11 +566,13 @@ local function setupXrayToggle(toggleFrame)
                 if xrayEnabled then
                     local parts = getAllParts()
                     
-                    for _, part in ipairs(parts) do
-                        if part and part.Parent then
-                            part.Transparency = 0.95
+                    pcall(function()
+                        for _, part in ipairs(parts) do
+                            if part and part.Parent then
+                                part.Transparency = 0.95
+                            end
                         end
-                    end
+                    end)
                 end
             end
         end)
@@ -579,11 +598,13 @@ local function setupXrayToggle(toggleFrame)
                         if xrayEnabled then
                             local parts = getAllParts()
                             
-                            for _, part in ipairs(parts) do
-                                if part and part.Parent then
-                                    part.Transparency = 0.95
+                            pcall(function()
+                                for _, part in ipairs(parts) do
+                                    if part and part.Parent then
+                                        part.Transparency = 0.95
+                                    end
                                 end
-                            end
+                            end)
                         end
                     end
                 end)
@@ -624,29 +645,39 @@ local function hasKeyword(text)
 end
 
 local function watchObject(obj)
+    if not obj then return end
     if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then
         return
     end
-    if hasKeyword(obj.Text) then
-        kick()
-        return
-    end
-    local conn = obj:GetPropertyChangedSignal("Text"):Connect(function()
+    
+    pcall(function()
         if hasKeyword(obj.Text) then
             kick()
+            return
         end
+        
+        local conn = obj:GetPropertyChangedSignal("Text"):Connect(function()
+            if hasKeyword(obj.Text) then
+                kick()
+            end
+        end)
+        table.insert(autoKickConnections, conn)
     end)
-    table.insert(autoKickConnections, conn)
 end
 
 local function scan(parent)
-    for _, obj in ipairs(parent:GetDescendants()) do
-        watchObject(obj)
-    end
+    if not parent then return end
+    pcall(function()
+        for _, obj in ipairs(parent:GetDescendants()) do
+            watchObject(obj)
+        end
+    end)
 end
 
 local function watchGui(gui)
+    if not gui then return end
     scan(gui)
+    
     local conn = gui.DescendantAdded:Connect(function(desc)
         watchObject(desc)
     end)
@@ -661,18 +692,20 @@ local function enableAutoKick()
     end
     autoKickConnections = {}
     
-    for _, gui in ipairs(PlayerGui:GetChildren()) do
-        watchGui(gui)
-    end
-    
-    local conn = PlayerGui.ChildAdded:Connect(function(gui)
-        watchGui(gui)
+    pcall(function()
+        for _, gui in ipairs(PlayerGui:GetChildren()) do
+            watchGui(gui)
+        end
+        
+        local conn = PlayerGui.ChildAdded:Connect(function(gui)
+            watchGui(gui)
+        end)
+        table.insert(autoKickConnections, conn)
     end)
-    table.insert(autoKickConnections, conn)
     
     if autoKickToggleFrame then
         local toggleBtn = autoKickToggleFrame:FindFirstChild("Toggle")
-        local circle = toggleBtn:FindFirstChild("Circle")
+        local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
         if toggleBtn and circle then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
             circle.Position = UDim2.new(1, -18, 0.5, -8)
@@ -690,7 +723,7 @@ local function disableAutoKick()
     
     if autoKickToggleFrame then
         local toggleBtn = autoKickToggleFrame:FindFirstChild("Toggle")
-        local circle = toggleBtn:FindFirstChild("Circle")
+        local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
         if toggleBtn and circle then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
             circle.Position = UDim2.new(0, 2, 0.5, -8)
@@ -699,15 +732,19 @@ local function disableAutoKick()
 end
 
 local function setupAutoKickToggle(toggleFrame)
+    if not toggleFrame then return end
+    
     autoKickToggleFrame = toggleFrame
     local toggleBtn = toggleFrame:FindFirstChild("Toggle")
-    local circle = toggleBtn:FindFirstChild("Circle")
+    local circle = toggleBtn and toggleBtn:FindFirstChild("Circle")
+    if not toggleBtn or not circle then return end
+    
     local state = autoKickEnabled
     
     if state then
         toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
         circle.Position = UDim2.new(1, -18, 0.5, -8)
-        enableAutoKick()
+        task.spawn(enableAutoKick)
     else
         toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
         circle.Position = UDim2.new(0, 2, 0.5, -8)
@@ -721,209 +758,213 @@ local function setupAutoKickToggle(toggleFrame)
         if state then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
             circle.Position = UDim2.new(1, -18, 0.5, -8)
-            enableAutoKick()
+            task.spawn(enableAutoKick)
         else
             toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
             circle.Position = UDim2.new(0, 2, 0.5, -8)
-            disableAutoKick()
+            task.spawn(disableAutoKick)
         end
     end)
 end
 
 local function createButton(name, text, icon, row, hasBind)
-	local yPos = (row - 1) * 40
-	
-	local btn = Instance.new("TextButton")
-	btn.Name = name
-	btn.Size = UDim2.new(1, 0, 0, 32)
-	btn.Position = UDim2.new(0, 0, 0, yPos)
-	btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
-	btn.Text = ""
-	btn.AutoButtonColor = false
-	btn.Parent = container
-	
-	local btnCorner = Instance.new("UICorner")
-	btnCorner.CornerRadius = UDim.new(0, 6)
-	btnCorner.Parent = btn
-	
-	local iconLabel = Instance.new("TextLabel")
-	iconLabel.Name = "Icon"
-	iconLabel.Size = UDim2.new(0, 24, 1, 0)
-	iconLabel.BackgroundTransparency = 1
-	iconLabel.Text = icon
-	iconLabel.TextColor3 = Color3.fromRGB(170, 180, 255)
-	iconLabel.Font = Enum.Font.GothamBold
-	iconLabel.TextSize = 16
-	iconLabel.Parent = btn
-	
-	local textLabel = Instance.new("TextLabel")
-	textLabel.Name = "Text"
-	textLabel.Size = UDim2.new(1, -70, 1, 0)
-	textLabel.Position = UDim2.new(0, 28, 0, 0)
-	textLabel.BackgroundTransparency = 1
-	textLabel.Text = text
-	textLabel.TextColor3 = Color3.fromRGB(230, 230, 250)
-	textLabel.Font = Enum.Font.Gotham
-	textLabel.TextSize = 13
-	textLabel.TextXAlignment = Enum.TextXAlignment.Left
-	textLabel.Parent = btn
-	
-	local bindBtn = nil
-	if hasBind then
-		bindBtn = Instance.new("TextButton")
-		bindBtn.Name = "Bind"
-		bindBtn.Size = UDim2.new(0, 30, 0, 22)
-		bindBtn.Position = UDim2.new(1, -35, 0.5, -11)
-		bindBtn.BackgroundColor3 = Color3.fromRGB(65, 68, 80)
-		bindBtn.Text = "B"
-		bindBtn.TextColor3 = Color3.fromRGB(200, 210, 255)
-		bindBtn.Font = Enum.Font.GothamBold
-		bindBtn.TextSize = 12
-		bindBtn.AutoButtonColor = false
-		bindBtn.Parent = btn
-		
-		local bindCorner = Instance.new("UICorner")
-		bindCorner.CornerRadius = UDim.new(0, 4)
-		bindCorner.Parent = bindBtn
-	end
-	
-	btn.MouseEnter:Connect(function()
-		btn.BackgroundColor3 = Color3.fromRGB(55, 58, 70)
-	end)
-	
-	btn.MouseLeave:Connect(function()
-		btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
-	end)
-	
-	if name == "CameraButton" then
-		setupCameraButton(btn, bindBtn)
-	elseif name == "NoSoundClone" then
-		setupNoSoundCloneButton(btn)
-	end
-	
-	return btn
+    local yPos = (row - 1) * 40
+    
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.Position = UDim2.new(0, 0, 0, yPos)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.Parent = container
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = btn
+    
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Name = "Icon"
+    iconLabel.Size = UDim2.new(0, 24, 1, 0)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = icon
+    iconLabel.TextColor3 = Color3.fromRGB(170, 180, 255)
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.TextSize = 16
+    iconLabel.Parent = btn
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Name = "Text"
+    textLabel.Size = UDim2.new(1, -70, 1, 0)
+    textLabel.Position = UDim2.new(0, 28, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = text
+    textLabel.TextColor3 = Color3.fromRGB(230, 230, 250)
+    textLabel.Font = Enum.Font.Gotham
+    textLabel.TextSize = 13
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.Parent = btn
+    
+    local bindBtn = nil
+    if hasBind then
+        bindBtn = Instance.new("TextButton")
+        bindBtn.Name = "Bind"
+        bindBtn.Size = UDim2.new(0, 30, 0, 22)
+        bindBtn.Position = UDim2.new(1, -35, 0.5, -11)
+        bindBtn.BackgroundColor3 = Color3.fromRGB(65, 68, 80)
+        bindBtn.Text = Settings.CameraBind or "B"
+        bindBtn.TextColor3 = Color3.fromRGB(200, 210, 255)
+        bindBtn.Font = Enum.Font.GothamBold
+        bindBtn.TextSize = 12
+        bindBtn.AutoButtonColor = false
+        bindBtn.Parent = btn
+        
+        local bindCorner = Instance.new("UICorner")
+        bindCorner.CornerRadius = UDim.new(0, 4)
+        bindCorner.Parent = bindBtn
+    end
+    
+    btn.MouseEnter:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(55, 58, 70)
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+    end)
+    
+    if name == "CameraButton" then
+        setupCameraButton(btn, bindBtn)
+    elseif name == "NoSoundClone" then
+        setupNoSoundCloneButton(btn)
+    end
+    
+    return btn
 end
 
 local function createToggle(name, text, icon, row)
-	local yPos = (row - 1) * 40
-	
-	local toggleFrame = Instance.new("Frame")
-	toggleFrame.Name = name.."Frame"
-	toggleFrame.Size = UDim2.new(1, 0, 0, 32)
-	toggleFrame.Position = UDim2.new(0, 0, 0, yPos)
-	toggleFrame.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
-	toggleFrame.Parent = container
-	
-	local toggleCorner = Instance.new("UICorner")
-	toggleCorner.CornerRadius = UDim.new(0, 6)
-	toggleCorner.Parent = toggleFrame
-	
-	local iconLabel = Instance.new("TextLabel")
-	iconLabel.Name = "Icon"
-	iconLabel.Size = UDim2.new(0, 24, 1, 0)
-	iconLabel.BackgroundTransparency = 1
-	iconLabel.Text = icon
-	iconLabel.TextColor3 = Color3.fromRGB(170, 180, 255)
-	iconLabel.Font = Enum.Font.GothamBold
-	iconLabel.TextSize = 16
-	iconLabel.Parent = toggleFrame
-	
-	local textLabel = Instance.new("TextLabel")
-	textLabel.Name = "Text"
-	textLabel.Size = UDim2.new(1, -70, 1, 0)
-	textLabel.Position = UDim2.new(0, 28, 0, 0)
-	textLabel.BackgroundTransparency = 1
-	textLabel.Text = text
-	textLabel.TextColor3 = Color3.fromRGB(230, 230, 250)
-	textLabel.Font = Enum.Font.Gotham
-	textLabel.TextSize = 13
-	textLabel.TextXAlignment = Enum.TextXAlignment.Left
-	textLabel.Parent = toggleFrame
-	
-	local toggleBtn = Instance.new("TextButton")
-	toggleBtn.Name = "Toggle"
-	toggleBtn.Size = UDim2.new(0, 40, 0, 20)
-	toggleBtn.Position = UDim2.new(1, -45, 0.5, -10)
-	toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
-	toggleBtn.Text = ""
-	toggleBtn.AutoButtonColor = false
-	toggleBtn.Parent = toggleFrame
-	
-	local toggleCorner2 = Instance.new("UICorner")
-	toggleCorner2.CornerRadius = UDim.new(1, 0)
-	toggleCorner2.Parent = toggleBtn
-	
-	local circle = Instance.new("Frame")
-	circle.Name = "Circle"
-	circle.Size = UDim2.new(0, 16, 0, 16)
-	circle.Position = UDim2.new(0, 2, 0.5, -8)
-	circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	circle.BorderSizePixel = 0
-	circle.Parent = toggleBtn
-	
-	local circleCorner = Instance.new("UICorner")
-	circleCorner.CornerRadius = UDim.new(1, 0)
-	circleCorner.Parent = circle
-	
-	toggleFrame.MouseEnter:Connect(function()
-		toggleFrame.BackgroundColor3 = Color3.fromRGB(55, 58, 70)
-	end)
-	
-	toggleFrame.MouseLeave:Connect(function()
-		toggleFrame.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
-	end)
-	
-	if name == "AutoUseFlash" then
-		setupAutoUseFlashToggle(toggleFrame)
-	elseif name == "Xray" then
-		setupXrayToggle(toggleFrame)
-	elseif name == "AutoKick" then
-		setupAutoKickToggle(toggleFrame)
-	end
-	
-	return toggleFrame
+    local yPos = (row - 1) * 40
+    
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Name = name.."Frame"
+    toggleFrame.Size = UDim2.new(1, 0, 0, 32)
+    toggleFrame.Position = UDim2.new(0, 0, 0, yPos)
+    toggleFrame.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+    toggleFrame.Parent = container
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 6)
+    toggleCorner.Parent = toggleFrame
+    
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Name = "Icon"
+    iconLabel.Size = UDim2.new(0, 24, 1, 0)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = icon
+    iconLabel.TextColor3 = Color3.fromRGB(170, 180, 255)
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.TextSize = 16
+    iconLabel.Parent = toggleFrame
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Name = "Text"
+    textLabel.Size = UDim2.new(1, -70, 1, 0)
+    textLabel.Position = UDim2.new(0, 28, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = text
+    textLabel.TextColor3 = Color3.fromRGB(230, 230, 250)
+    textLabel.Font = Enum.Font.Gotham
+    textLabel.TextSize = 13
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.Parent = toggleFrame
+    
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Name = "Toggle"
+    toggleBtn.Size = UDim2.new(0, 40, 0, 20)
+    toggleBtn.Position = UDim2.new(1, -45, 0.5, -10)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+    toggleBtn.Text = ""
+    toggleBtn.AutoButtonColor = false
+    toggleBtn.Parent = toggleFrame
+    
+    local toggleCorner2 = Instance.new("UICorner")
+    toggleCorner2.CornerRadius = UDim.new(1, 0)
+    toggleCorner2.Parent = toggleBtn
+    
+    local circle = Instance.new("Frame")
+    circle.Name = "Circle"
+    circle.Size = UDim2.new(0, 16, 0, 16)
+    circle.Position = UDim2.new(0, 2, 0.5, -8)
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    circle.BorderSizePixel = 0
+    circle.Parent = toggleBtn
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = circle
+    
+    toggleFrame.MouseEnter:Connect(function()
+        toggleFrame.BackgroundColor3 = Color3.fromRGB(55, 58, 70)
+    end)
+    
+    toggleFrame.MouseLeave:Connect(function()
+        toggleFrame.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+    end)
+    
+    if name == "AutoUseFlash" then
+        setupAutoUseFlashToggle(toggleFrame)
+    elseif name == "Xray" then
+        setupXrayToggle(toggleFrame)
+    elseif name == "AutoKick" then
+        setupAutoKickToggle(toggleFrame)
+    end
+    
+    return toggleFrame
 end
 
-createButton("CameraButton", "Camera", "📷", 1, true)
-createButton("NoSoundClone", "No Sound Clone", "🔇", 2, false)
-createToggle("AutoUseFlash", "Auto Use Flash", "⚡", 3)
-createToggle("Xray", "Xray", "👁️", 4)
-createToggle("AutoKick", "Auto Kick", "🦵", 5)
+if container then
+    createButton("CameraButton", "Camera", "📷", 1, true)
+    createButton("NoSoundClone", "No Sound Clone", "🔇", 2, false)
+    createToggle("AutoUseFlash", "Auto Use Flash", "⚡", 3)
+    createToggle("Xray", "Xray", "👁️", 4)
+    createToggle("AutoKick", "Auto Kick", "🦵", 5)
+end
 
 local minimized = false
 
 local function minimize()
-	minimized = true
-	mainFrame.Size = UDim2.new(0, 240, 0, 35)
-	container.Visible = false
-	minimizedFrame.Visible = true
+    minimized = true
+    mainFrame.Size = UDim2.new(0, 240, 0, 35)
+    container.Visible = false
+    minimizedFrame.Visible = true
 end
 
 local function maximize()
-	minimized = false
-	mainFrame.Size = UDim2.new(0, 240, 0, 260)
-	container.Visible = true
-	minimizedFrame.Visible = false
+    minimized = false
+    mainFrame.Size = UDim2.new(0, 240, 0, 260)
+    container.Visible = true
+    minimizedFrame.Visible = false
 end
 
-minimizeBtn.MouseButton1Click:Connect(minimize)
-minimizeBtn2.MouseButton1Click:Connect(maximize)
-
-minimizeBtn.MouseEnter:Connect(function()
-	minimizeBtn.BackgroundColor3 = Color3.fromRGB(75, 78, 90)
-end)
-
-minimizeBtn.MouseLeave:Connect(function()
-	minimizeBtn.BackgroundColor3 = Color3.fromRGB(55, 58, 68)
-end)
-
-minimizeBtn2.MouseEnter:Connect(function()
-	minimizeBtn2.BackgroundColor3 = Color3.fromRGB(75, 78, 90)
-end)
-
-minimizeBtn2.MouseLeave:Connect(function()
-	minimizeBtn2.BackgroundColor3 = Color3.fromRGB(55, 58, 68)
-end)
+if minimizeBtn and minimizeBtn2 then
+    minimizeBtn.MouseButton1Click:Connect(minimize)
+    minimizeBtn2.MouseButton1Click:Connect(maximize)
+    
+    minimizeBtn.MouseEnter:Connect(function()
+        minimizeBtn.BackgroundColor3 = Color3.fromRGB(75, 78, 90)
+    end)
+    
+    minimizeBtn.MouseLeave:Connect(function()
+        minimizeBtn.BackgroundColor3 = Color3.fromRGB(55, 58, 68)
+    end)
+    
+    minimizeBtn2.MouseEnter:Connect(function()
+        minimizeBtn2.BackgroundColor3 = Color3.fromRGB(75, 78, 90)
+    end)
+    
+    minimizeBtn2.MouseLeave:Connect(function()
+        minimizeBtn2.BackgroundColor3 = Color3.fromRGB(55, 58, 68)
+    end)
+end
 
 gui.Destroying:Connect(function()
     if cameraConnection then
@@ -937,17 +978,15 @@ gui.Destroying:Connect(function()
     end
 end)
 
-if Settings.AutoKickEnabled then
-    task.spawn(function()
-        task.wait(0.5)
-        enableAutoKick()
-    end)
-end
-
-if Settings.XrayEnabled then
-    task.spawn(function()
-        task.wait(0.5)
-        enableXray()
+task.spawn(function()
+    task.wait(0.5)
+    
+    if Settings.AutoKickEnabled then
+        pcall(enableAutoKick)
+    end
+    
+    if Settings.XrayEnabled then
+        pcall(enableXray)
         if not xrayConnection then
             xrayConnection = RunService.Heartbeat:Connect(function()
                 local currentTime = tick()
@@ -958,14 +997,16 @@ if Settings.XrayEnabled then
                     if xrayEnabled then
                         local parts = getAllParts()
                         
-                        for _, part in ipairs(parts) do
-                            if part and part.Parent then
-                                part.Transparency = 0.95
+                        pcall(function()
+                            for _, part in ipairs(parts) do
+                                if part and part.Parent then
+                                    part.Transparency = 0.95
+                                end
                             end
-                        end
+                        end)
                     end
                 end
             end)
         end
-    end)
-end
+    end
+end)
