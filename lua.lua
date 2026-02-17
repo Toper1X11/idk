@@ -538,7 +538,7 @@ local function setupXrayToggle(toggleFrame)
         toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
         circle.Position = UDim2.new(0, 2, 0.5, -8)
     end
-    -
+    
     if state then
         xrayConnection = RunService.Heartbeat:Connect(function()
             local currentTime = tick()
