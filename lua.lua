@@ -3,23 +3,31 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local HttpService = game:GetService("HttpService")
+local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
 
 local ConfigName = "rbxlxcfgsave.json"
 local defaultConfig = {
     cameraBind = "B",
-    autoFlashEnabled = false
+    autoFlashEnabled = false,
+    xrayEnabled = false,
+    autoKickEnabled = false
 }
 
 local Settings = {
     CameraBind = "B",
-    AutoFlashEnabled = false
+    AutoFlashEnabled = false,
+    XrayEnabled = false,
+    AutoKickEnabled = false
 }
 
 local function SaveConfig()
     local data = {
         CameraBind = Settings.CameraBind,
-        AutoFlashEnabled = Settings.AutoFlashEnabled
+        AutoFlashEnabled = Settings.AutoFlashEnabled,
+        XrayEnabled = Settings.XrayEnabled,
+        AutoKickEnabled = Settings.AutoKickEnabled
     }
    
     local success, json = pcall(function() return HttpService:JSONEncode(data) end)
@@ -39,6 +47,8 @@ local function LoadConfig()
         if success and result then
             if result.CameraBind then Settings.CameraBind = result.CameraBind end
             if result.AutoFlashEnabled ~= nil then Settings.AutoFlashEnabled = result.AutoFlashEnabled end
+            if result.XrayEnabled ~= nil then Settings.XrayEnabled = result.XrayEnabled end
+            if result.AutoKickEnabled ~= nil then Settings.AutoKickEnabled = result.AutoKickEnabled end
         end
     end
 end
@@ -52,8 +62,8 @@ gui.Parent = player:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 240, 0, 180)
-mainFrame.Position = UDim2.new(0.5, -120, 0.5, -90)
+mainFrame.Size = UDim2.new(0, 240, 0, 260)
+mainFrame.Position = UDim2.new(0.5, -120, 0.5, -130)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 33)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = gui
@@ -380,6 +390,346 @@ local function setupAutoUseFlashToggle(toggleFrame)
     end)
 end
 
+local xrayEnabled = Settings.XrayEnabled
+local xrayConnection = nil
+local xrayToggleFrame = nil
+
+local ignoreFolders = {
+    AnimalPodiums = true,
+    Decorations = true,
+    InvisibleWalls = true,
+    Laser = true,
+    LaserHitbox = true,
+    Purchases = true,
+    Skin = true,
+    Unlock = true
+}
+
+local ignoreParts = {
+    AnimalTarget = true,
+    DeliveryHitbox = true,
+    MainRoot = true,
+    Multiplier = true,
+    PlotSign = true,
+    Slope = true,
+    Spawn = true,
+    StealHitbox = true
+}
+
+local ignoreModels = {
+    FriendPanel = true,
+    CashPad = true
+}
+
+local lastUpdate = 0
+local partsCache = {}
+local cacheTime = 0
+
+local function shouldIgnore(obj)
+    if not obj then return true end
+    
+    local objName = obj.Name
+    
+    if obj:IsA("Model") and ignoreModels[objName] then
+        return true
+    end
+    
+    if obj:IsA("Folder") and ignoreFolders[objName] then
+        return true
+    end
+    
+    if obj:IsA("BasePart") and ignoreParts[objName] then
+        return true
+    end
+    
+    local parent = obj.Parent
+    while parent do
+        local parentName = parent.Name
+        
+        if parent:IsA("Folder") and ignoreFolders[parentName] then
+            return true
+        end
+        
+        if parent:IsA("Model") and ignoreModels[parentName] then
+            return true
+        end
+        
+        parent = parent.Parent
+    end
+    
+    return false
+end
+
+local function getAllParts()
+    local currentTime = tick()
+    
+    if not next(partsCache) or currentTime - cacheTime > 5 then
+        local plots = Workspace:FindFirstChild("Plots")
+        local newParts = {}
+        cacheTime = currentTime
+        
+        if plots then
+            local function collectParts(instance)
+                if shouldIgnore(instance) then
+                    return
+                end
+                
+                if instance:IsA("BasePart") then
+                    table.insert(newParts, instance)
+                end
+                
+                for _, child in ipairs(instance:GetChildren()) do
+                    collectParts(child)
+                end
+            end
+            
+            collectParts(plots)
+        end
+        
+        partsCache = newParts
+    end
+    
+    return partsCache
+end
+
+local function enableXray()
+    xrayEnabled = true
+    cacheTime = 0
+    
+    if xrayToggleFrame then
+        local toggleBtn = xrayToggleFrame:FindFirstChild("Toggle")
+        local circle = toggleBtn:FindFirstChild("Circle")
+        if toggleBtn and circle then
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+            circle.Position = UDim2.new(1, -18, 0.5, -8)
+        end
+    end
+end
+
+local function disableXray()
+    xrayEnabled = false
+    
+    for _, part in ipairs(partsCache) do
+        if part and part.Parent then
+            part.Transparency = 0
+        end
+    end
+    
+    if xrayToggleFrame then
+        local toggleBtn = xrayToggleFrame:FindFirstChild("Toggle")
+        local circle = toggleBtn:FindFirstChild("Circle")
+        if toggleBtn and circle then
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+            circle.Position = UDim2.new(0, 2, 0.5, -8)
+        end
+    end
+end
+
+local function setupXrayToggle(toggleFrame)
+    xrayToggleFrame = toggleFrame
+    local toggleBtn = toggleFrame:FindFirstChild("Toggle")
+    local circle = toggleBtn:FindFirstChild("Circle")
+    local state = xrayEnabled
+    
+    if state then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+        circle.Position = UDim2.new(1, -18, 0.5, -8)
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+        circle.Position = UDim2.new(0, 2, 0.5, -8)
+    end
+    -
+    if state then
+        xrayConnection = RunService.Heartbeat:Connect(function()
+            local currentTime = tick()
+            
+            if currentTime - lastUpdate >= 0.01 then
+                lastUpdate = currentTime
+                
+                if xrayEnabled then
+                    local parts = getAllParts()
+                    
+                    for _, part in ipairs(parts) do
+                        if part and part.Parent then
+                            part.Transparency = 0.95
+                        end
+                    end
+                end
+            end
+        end)
+    end
+    
+    toggleBtn.MouseButton1Click:Connect(function()
+        state = not state
+        Settings.XrayEnabled = state
+        SaveConfig()
+        
+        if state then
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+            circle.Position = UDim2.new(1, -18, 0.5, -8)
+            enableXray()
+            
+            if not xrayConnection then
+                xrayConnection = RunService.Heartbeat:Connect(function()
+                    local currentTime = tick()
+                    
+                    if currentTime - lastUpdate >= 0.01 then
+                        lastUpdate = currentTime
+                        
+                        if xrayEnabled then
+                            local parts = getAllParts()
+                            
+                            for _, part in ipairs(parts) do
+                                if part and part.Parent then
+                                    part.Transparency = 0.95
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        else
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+            circle.Position = UDim2.new(0, 2, 0.5, -8)
+            disableXray()
+            
+            if xrayConnection then
+                xrayConnection:Disconnect()
+                xrayConnection = nil
+            end
+        end
+    end)
+    
+    task.spawn(function()
+        task.wait(1)
+        getAllParts()
+    end)
+end
+
+local autoKickEnabled = Settings.AutoKickEnabled
+local autoKickToggleFrame = nil
+local autoKickConnections = {}
+local KEYWORD = "you stole"
+local KICK_MESSAGE = "инвайт в нави"
+
+local function kick()
+    pcall(function()
+        player:Kick(KICK_MESSAGE)
+    end)
+end
+
+local function hasKeyword(text)
+    if typeof(text) ~= "string" then return false end
+    return string.find(string.lower(text), KEYWORD) ~= nil
+end
+
+local function watchObject(obj)
+    if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then
+        return
+    end
+    if hasKeyword(obj.Text) then
+        kick()
+        return
+    end
+    local conn = obj:GetPropertyChangedSignal("Text"):Connect(function()
+        if hasKeyword(obj.Text) then
+            kick()
+        end
+    end)
+    table.insert(autoKickConnections, conn)
+end
+
+local function scan(parent)
+    for _, obj in ipairs(parent:GetDescendants()) do
+        watchObject(obj)
+    end
+end
+
+local function watchGui(gui)
+    scan(gui)
+    local conn = gui.DescendantAdded:Connect(function(desc)
+        watchObject(desc)
+    end)
+    table.insert(autoKickConnections, conn)
+end
+
+local function enableAutoKick()
+    autoKickEnabled = true
+    
+    for _, conn in ipairs(autoKickConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    autoKickConnections = {}
+    
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        watchGui(gui)
+    end
+    
+    local conn = PlayerGui.ChildAdded:Connect(function(gui)
+        watchGui(gui)
+    end)
+    table.insert(autoKickConnections, conn)
+    
+    if autoKickToggleFrame then
+        local toggleBtn = autoKickToggleFrame:FindFirstChild("Toggle")
+        local circle = toggleBtn:FindFirstChild("Circle")
+        if toggleBtn and circle then
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+            circle.Position = UDim2.new(1, -18, 0.5, -8)
+        end
+    end
+end
+
+local function disableAutoKick()
+    autoKickEnabled = false
+    
+    for _, conn in ipairs(autoKickConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    autoKickConnections = {}
+    
+    if autoKickToggleFrame then
+        local toggleBtn = autoKickToggleFrame:FindFirstChild("Toggle")
+        local circle = toggleBtn:FindFirstChild("Circle")
+        if toggleBtn and circle then
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+            circle.Position = UDim2.new(0, 2, 0.5, -8)
+        end
+    end
+end
+
+local function setupAutoKickToggle(toggleFrame)
+    autoKickToggleFrame = toggleFrame
+    local toggleBtn = toggleFrame:FindFirstChild("Toggle")
+    local circle = toggleBtn:FindFirstChild("Circle")
+    local state = autoKickEnabled
+    
+    if state then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+        circle.Position = UDim2.new(1, -18, 0.5, -8)
+        enableAutoKick()
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+        circle.Position = UDim2.new(0, 2, 0.5, -8)
+    end
+    
+    toggleBtn.MouseButton1Click:Connect(function()
+        state = not state
+        Settings.AutoKickEnabled = state
+        SaveConfig()
+        
+        if state then
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 255)
+            circle.Position = UDim2.new(1, -18, 0.5, -8)
+            enableAutoKick()
+        else
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+            circle.Position = UDim2.new(0, 2, 0.5, -8)
+            disableAutoKick()
+        end
+    end)
+end
+
 local function createButton(name, text, icon, row, hasBind)
 	local yPos = (row - 1) * 40
 	
@@ -525,6 +875,10 @@ local function createToggle(name, text, icon, row)
 	
 	if name == "AutoUseFlash" then
 		setupAutoUseFlashToggle(toggleFrame)
+	elseif name == "Xray" then
+		setupXrayToggle(toggleFrame)
+	elseif name == "AutoKick" then
+		setupAutoKickToggle(toggleFrame)
 	end
 	
 	return toggleFrame
@@ -533,6 +887,8 @@ end
 createButton("CameraButton", "Camera", "📷", 1, true)
 createButton("NoSoundClone", "No Sound Clone", "🔇", 2, false)
 createToggle("AutoUseFlash", "Auto Use Flash", "⚡", 3)
+createToggle("Xray", "Xray", "👁️", 4)
+createToggle("AutoKick", "Auto Kick", "🦵", 5)
 
 local minimized = false
 
@@ -545,7 +901,7 @@ end
 
 local function maximize()
 	minimized = false
-	mainFrame.Size = UDim2.new(0, 240, 0, 180)
+	mainFrame.Size = UDim2.new(0, 240, 0, 260)
 	container.Visible = true
 	minimizedFrame.Visible = false
 end
@@ -573,4 +929,43 @@ gui.Destroying:Connect(function()
     if cameraConnection then
         cameraConnection:Disconnect()
     end
+    if xrayConnection then
+        xrayConnection:Disconnect()
+    end
+    for _, conn in ipairs(autoKickConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
 end)
+
+if Settings.AutoKickEnabled then
+    task.spawn(function()
+        task.wait(0.5)
+        enableAutoKick()
+    end)
+end
+
+if Settings.XrayEnabled then
+    task.spawn(function()
+        task.wait(0.5)
+        enableXray()
+        if not xrayConnection then
+            xrayConnection = RunService.Heartbeat:Connect(function()
+                local currentTime = tick()
+                
+                if currentTime - lastUpdate >= 0.01 then
+                    lastUpdate = currentTime
+                    
+                    if xrayEnabled then
+                        local parts = getAllParts()
+                        
+                        for _, part in ipairs(parts) do
+                            if part and part.Parent then
+                                part.Transparency = 0.95
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+end
